@@ -213,6 +213,7 @@ def unique_headers(raw_headers: Sequence[object]) -> List[str]:
 # Excel readers
 # ---------------------------------------------------------------------
 
+# dot size = PSM
 def read_semitryptome(path: Path) -> pd.DataFrame:
     """
     Read the Arabidopsis semitryptome file and retain only PYK10/BGLU23 rows.
@@ -272,7 +273,20 @@ def read_semitryptome(path: Path) -> pd.DataFrame:
 
     return out
 
+# out["weight"] = out["max_abs_logfc"].fillna(0) for plotting
+# larger max_abs_logFC = larger HUNTER dot
+# out["max_abs_logfc"] = out[logfc_present].abs().max(axis=1, skipna=True)
+# We use this strategy because the HUNTER dataset has several methyl-jasmonate time points,
+# and we need one simple number to represent how strongly each peptide responds.
+# For each peptide row, look across all MJ logFC time points, ignore the sign, and take the strongest change.
+# abs: This is useful because both strong increase and strong decrease indicate a strong treatment-associated change.
+# HUNTER dot position = peptide start / cleavage coordinate
+# HUNTER dot size = strongest MJ response at any time point
 
+# Explanation: Because HUNTER contains several methyl-jasmonate time points, 
+# I summarized each peptide’s response using the maximum absolute log2 fold-change across time. 
+# This gives one response-strength value per peptide and allows marker size in the plot to represent the strongest treatment-associated change. 
+# I used the absolute value because both strong increases and strong decreases indicate responsive N-terminal peptides.
 def read_hunter_arabidopsis(path: Path, sheet_name: str = "Only significant peptides") -> pd.DataFrame:
     """
     Read Arabidopsis HUNTER methyl-jasmonate data and retain PYK10 rows.
@@ -350,7 +364,25 @@ def read_hunter_arabidopsis(path: Path, sheet_name: str = "Only significant pept
 
     return out
 
+# calculate one maximum metacaspase score per row : Target protein AT3G09260.1
+# Start = 284
+# End = 293
+# Sequence = DSQDGASIDR
+# out["metacaspase_score_max"] = out[score_cols].max(axis=1, skipna=True)
+# Because the Data sheet contains multiple metacaspase-related score sections. 
+# A peptide may be supported in one section but not another.
+# For plotting, we need one value per row. The maximum score answers:
+# What is the strongest metacaspase evidence for this peptide window?
+# larger metacaspase_score_max = larger metacaspase dot
+# larger dot = this peptide/start site has stronger metacaspase evidence in at least one score column
+# The task is asking for a visualization that makes overlap/proximity intuitive. It is not asking for a detailed comparison of each individual metacaspase.
+# So for the main plot, using the maximum score is fine because it reduces many score columns to one interpretable value:
+# So when we say “different MC,” we mean different Arabidopsis metacaspase enzymes or metacaspase assay groups.
+# metacaspase = enzyme that can cleave proteins
 
+# Explain: The metacaspase matrix contains several score columns, likely corresponding to different metacaspase enzymes or experimental score blocks. 
+# For the integrated overview plot, I summarized them by taking the maximum score per peptide window. This gives one metacaspase evidence value per site. 
+# It should be interpreted as evidence from at least one metacaspase-related score, not as evidence that all metacaspases cleave the site.
 def read_metacaspase(path: Path) -> pd.DataFrame:
     """
     Read the ProteinBased_www_P10'P10 metacaspase matrix and retain only rows
@@ -427,6 +459,25 @@ def read_metacaspase(path: Path) -> pd.DataFrame:
 # Lollipop plotting
 # ---------------------------------------------------------------------
 
+# | Dataset            | Weight means              |
+# | ------------------ | ------------------------- |
+# | Semitryptome       | PSM                       |
+# | HUNTER MJ          | maximum absolute logFC    |
+# | Metacaspase matrix | maximum metacaspase score |
+
+# So if the same dataset has multiple rows at the same coordinate, 
+# the plot will show one dot, not many overlapping dots.
+
+# Because PSM gives peptide-spectrum match support. A higher PSM means stronger peptide evidence.
+# for example: 
+# | cleavage_site | dataset            | weight |
+# | ------------: | ------------------ | -----: |
+# |            23 | Semitryptome       |      5 |
+# |            25 | HUNTER MJ          |    2.3 |
+# |           284 | Metacaspase matrix |   0.61 |
+
+# So rows are collapsed only if they come from the same dataset and have the same exact cleavage coordinate.
+# Because the same coordinate may appear in multiple datasets, and we want to keep those separate.
 def build_lollipop_points(
     semi: pd.DataFrame,
     hunter: pd.DataFrame,
@@ -550,7 +601,6 @@ def build_cluster_summary(points: pd.DataFrame, gap: int = 10) -> pd.DataFrame:
 
     return pd.DataFrame(rows)
 
-
 def infer_protein_length(semi: pd.DataFrame, hunter: pd.DataFrame, meta: pd.DataFrame) -> int:
     """
     Infer plotting length from peptide ends and HUNTER relative positions.
@@ -576,7 +626,13 @@ def infer_protein_length(semi: pd.DataFrame, hunter: pd.DataFrame, meta: pd.Data
 
     return max(max_end, DEFAULT_LENGTH)
 
-
+# instead of treating every nearby site as a completely independent biological event.
+# The reason is that cleavage evidence often appears as several nearby starts, not one perfect exact residue. 
+# So this function helps us summarize the region-level evidence while still showing the exact coordinates in the tables.
+# a new site joins the same cluster if it is within 10 amino acids of the previous site. 
+# because each new site is close to the previous one. 
+# This creates clusters of nearby sites that likely represent the same underlying processing event or region, rather than treating them as completely independent events.
+# Clusters are used as a visual summary of proximal cleavage evidence, not as proof of a single biochemical cleavage site.
 def plot_lollipop_multisource_hotspots(
     points: pd.DataFrame,
     cluster_summary: pd.DataFrame,
@@ -584,6 +640,7 @@ def plot_lollipop_multisource_hotspots(
     out_png: Path,
     out_pdf: Path,
     shade_min_dataset_support: int = 2,
+    x_tick_gap: int = 20,
     title: str = "AT3G09260.1 (PYK10 / BGLU23 / LEB / PSR3.1): cleavage-site evidence",
 ) -> None:
     """
@@ -592,34 +649,43 @@ def plot_lollipop_multisource_hotspots(
     Features:
       - one horizontal track per dataset
       - dot at each cleavage coordinate
-      - marker size scaled by evidence strength
+      - marker size scaled by evidence strength within each dataset
       - faint lollipop stems
       - background shading for clusters/hotspots supported by >= 2 datasets
+      - configurable x-axis tick spacing using x_tick_gap
     """
     if points.empty:
         raise ValueError("No points available for lollipop plot.")
 
+    # Compact vertical spacing
     y_positions = {
-        "Semitryptome": 3,
-        "HUNTER MJ": 2,
-        "Metacaspase matrix": 1,
+        "Semitryptome": 1.45,
+        "HUNTER MJ": 1.10,
+        "Metacaspase matrix": 0.75,
     }
+
+    dataset_order = ["Semitryptome", "HUNTER MJ", "Metacaspase matrix"]
+    cluster_label_y = max(y_positions.values()) + 0.15
 
     fig, ax = plt.subplots(figsize=(15, 5.8))
 
     # Background cluster shading
     if not cluster_summary.empty:
-        shaded = cluster_summary[cluster_summary["datasets_supporting"] >= shade_min_dataset_support]
+        shaded = cluster_summary[
+            cluster_summary["datasets_supporting"] >= shade_min_dataset_support
+        ]
+
         for _, row in shaded.iterrows():
             ax.axvspan(
                 row["cluster_start"],
                 row["cluster_end"],
-                alpha=0.10,
+                alpha=0.20,
                 zorder=0,
             )
+
             ax.text(
                 row["cluster_center"],
-                3.47,
+                cluster_label_y,
                 row["cluster_id"],
                 ha="center",
                 va="bottom",
@@ -627,8 +693,10 @@ def plot_lollipop_multisource_hotspots(
             )
 
     # Lollipop tracks
-    for dataset, y in y_positions.items():
+    for dataset in dataset_order:
+        y = y_positions[dataset]
         sub = points[points["dataset"] == dataset].copy()
+
         if sub.empty:
             continue
 
@@ -636,19 +704,20 @@ def plot_lollipop_multisource_hotspots(
         if pd.isna(max_weight) or max_weight <= 0:
             max_weight = 1.0
 
-        # Keep marker size readable but not too dominant.
+        # Scale marker size within each dataset
         sub["marker_size"] = 30 + 85 * (sub["weight"] / max_weight)
 
-        # Faint stems
+        # Faint lollipop stems
         for x in sub["cleavage_site"]:
             ax.plot(
                 [x, x],
-                [y - 0.16, y + 0.16],
+                [y - 0.12, y + 0.12],
                 linewidth=0.65,
                 alpha=0.30,
                 zorder=1,
             )
 
+        # Lollipop dots
         ax.scatter(
             sub["cleavage_site"],
             np.full(len(sub), y),
@@ -658,23 +727,31 @@ def plot_lollipop_multisource_hotspots(
             zorder=2,
         )
 
+    # X-axis: protein coordinate
     ax.set_xlim(0, protein_len + 10)
-    ax.set_ylim(0.45, 3.75)
-    ax.set_yticks([3, 2, 1])
-    ax.set_yticklabels(["Semitryptome", "HUNTER MJ", "Metacaspase matrix"])
+    ax.set_xticks(np.arange(0, protein_len + x_tick_gap, x_tick_gap))
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+
+    # Y-axis: dataset tracks
+    ax.set_ylim(0.65, cluster_label_y + 0.15)
+    ax.set_yticks([y_positions[d] for d in dataset_order])
+    ax.set_yticklabels(dataset_order)
+
     ax.set_xlabel("AT3G09260.1 / PYK10 residue coordinate")
-    ax.set_title(title)
+    ax.set_title(title, pad=30)
 
     ax.grid(axis="x", alpha=0.23)
+
+    # Legend above the plot
     ax.legend(
         loc="upper center",
         ncol=3,
         frameon=False,
-        bbox_to_anchor=(0.5, 1.12),
+        bbox_to_anchor=(0.8, 1.0),
     )
 
     fig.tight_layout()
-    fig.savefig(out_png, dpi=300)
+    fig.savefig(out_png, dpi=600)
     fig.savefig(out_pdf)
     plt.close(fig)
 
@@ -719,12 +796,9 @@ def plot_cluster_matrix(cluster_summary: pd.DataFrame, out_png: Path, out_pdf: P
     ax.set_ylabel("Cleavage-region cluster")
     ax.set_title("PYK10 cluster-level evidence matrix")
     ax.grid(alpha=0.2)
-
-    fig.tight_layout()
     fig.savefig(out_png, dpi=300)
     fig.savefig(out_pdf)
     plt.close(fig)
-
 
 def write_readme(
     output_dir: Path,
