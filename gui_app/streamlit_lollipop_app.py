@@ -22,7 +22,7 @@ from typing import Dict, Iterable, Optional, Tuple
 import pandas as pd
 import streamlit as st
 
-from run_analysis_lollipop_any_protein import (
+from run_analysis import (
     build_cluster_summary,
     build_lollipop_points,
     infer_protein_length,
@@ -349,11 +349,11 @@ if mode == "Extract from Excel datasets":
                 value=False,
             )
         with m2:
-            include_isoforms = st.checkbox(
-                "Match metacaspase Isoforms/Description fields",
-                value=False,
-                help="Default matching uses the primary Protein column only.",
+            st.info(
+                "Metacaspase extraction is strict: only rows whose primary Protein "
+                "column equals the Primary target ID are retained."
             )
+            include_isoforms = False
 
         submitted = st.form_submit_button("Generate lollipop plot", use_container_width=True)
 
@@ -385,7 +385,7 @@ if mode == "Extract from Excel datasets":
 
                     semi = read_semitryptome(semi_path, target)
                     hunter = read_hunter_arabidopsis(hunter_path, target)
-                    meta = read_metacaspase(meta_path, target, match_isoforms=include_isoforms)
+                    meta = read_metacaspase(meta_path, target, match_isoforms=False)
 
                     points = build_lollipop_points(
                         semi,

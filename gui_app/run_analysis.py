@@ -575,14 +575,27 @@ def read_hunter_arabidopsis(path: Path, target: TargetSpec, sheet_name: str = "O
 # It should be interpreted as evidence from at least one metacaspase-related score, not as evidence that all metacaspases cleave the site.
 def read_metacaspase(path: Path, target: TargetSpec, match_isoforms: bool = False) -> pd.DataFrame:
     """
-    Read the ProteinBased_www_P10'P10 metacaspase matrix and retain rows
-    whose primary Protein column matches the requested target.
+    Read the ProteinBased_www_P10'P10 metacaspase matrix and retain only rows
+    whose PRIMARY Protein column is the requested target protein ID.
 
-    By default, matching is restricted to the primary Protein column. This
-    avoids treating shared/homologous peptide mappings as direct evidence for
-    the requested protein. Use --metacaspase-include-isoforms when those shared
-    Isoforms mappings should also be included.
+    Strict rule:
+      keep a row only if Protein == target.query after light normalization.
+
+    This intentionally does NOT use aliases, UniProt ID, Description, or Isoforms
+    for metacaspase extraction. Those fields can contain shared or homologous
+    mappings, which would incorrectly pull rows from related BGLU proteins such
+    as AT1G66270.2, AT1G66280.1, AT3G16420.2, or AT3G21370.1 when the requested
+    target is AT3G09260.1.
+
+    The match_isoforms argument is retained only for backward compatibility with
+    older GUI code; it is ignored in this strict extraction function.
     """
+    if match_isoforms:
+        print(
+            "WARNING: match_isoforms=True was requested, but metacaspase extraction "
+            "is now strict and uses only the primary Protein column."
+        )
+
     wb = load_workbook(path, read_only=True, data_only=True)
 
     if "Data" in wb.sheetnames:
@@ -602,23 +615,26 @@ def read_metacaspase(path: Path, target: TargetSpec, match_isoforms: bool = Fals
         wb.close()
         raise ValueError(f"Missing metacaspase columns in {path.name}: {missing}")
 
+    target_primary_id = normalize_match_text(target.query)
+    if not target_primary_id:
+        wb.close()
+        raise ValueError("The primary target ID is empty; metacaspase extraction requires a Protein-column ID.")
+
     rows = []
     for r in ws.iter_rows(min_row=header_row + 1, values_only=True):
-        primary_fields = [r[idx["Protein"]]]
-        expanded_fields = list(primary_fields)
-        if match_isoforms:
-            for optional_col in ["Isoforms", "Description"]:
-                if optional_col in idx:
-                    expanded_fields.append(r[idx[optional_col]])
+        primary_protein = r[idx["Protein"]]
+        primary_protein_norm = normalize_match_text(primary_protein)
 
-        if target_matches_fields(target, expanded_fields, allow_substring=match_isoforms):
+        # Strict primary-column match only. Do not search Isoforms, Description,
+        # UniProt accession, or gene aliases here.
+        if primary_protein_norm == target_primary_id:
             rows.append({h: r[i] if i < len(r) else None for i, h in enumerate(headers)})
 
     wb.close()
 
     out = pd.DataFrame(rows)
     if out.empty:
-        print(f"WARNING: no primary rows matching {target.query} found in metacaspase matrix.")
+        print(f"WARNING: no primary Protein == {target.query} rows found in metacaspase matrix.")
         return out
 
     out["dataset"] = "Metacaspase matrix"
@@ -642,7 +658,6 @@ def read_metacaspase(path: Path, target: TargetSpec, match_isoforms: bool = Fals
         print(f"    - {protein_id}")
 
     return out
-
 
 # ---------------------------------------------------------------------
 # Lollipop plotting
@@ -1129,8 +1144,7 @@ def main() -> None:
         "--metacaspase-include-isoforms",
         action="store_true",
         help=(
-            "Also match target aliases in metacaspase Isoforms/Description fields. "
-            "Default is primary Protein-column matching only."
+            "Deprecated/ignored. Metacaspase extraction is always strict: primary Protein column == --target only."
         ),
     )
     parser.add_argument(
