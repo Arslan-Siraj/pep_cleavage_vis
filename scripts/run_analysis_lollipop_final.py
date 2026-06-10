@@ -661,7 +661,7 @@ def plot_lollipop_multisource_hotspots(
     y_positions = {
         "Semitryptome": 1.45,
         "HUNTER MJ": 1.10,
-        "Metacaspase matrix": 0.75,
+        "Metacaspase matrix": 0.80
     }
 
     dataset_order = ["Semitryptome", "HUNTER MJ", "Metacaspase matrix"]
@@ -738,7 +738,7 @@ def plot_lollipop_multisource_hotspots(
     ax.set_yticklabels(dataset_order)
 
     ax.set_xlabel("AT3G09260.1 / PYK10 residue coordinate")
-    ax.set_title(title, pad=30)
+    ax.set_title(title, pad=5)
 
     ax.grid(axis="x", alpha=0.23)
 
@@ -747,14 +747,15 @@ def plot_lollipop_multisource_hotspots(
         loc="upper center",
         ncol=3,
         frameon=False,
-        bbox_to_anchor=(0.8, 1.0),
-    )
+        bbox_to_anchor=(0.76, 1.0),
+        fontsize=12,)
 
     fig.tight_layout()
     fig.savefig(out_png, dpi=600)
     fig.savefig(out_pdf)
     plt.close(fig)
 
+#  python scripts/run_analysis_lollipop_final.py --input-dir data --output-dir plot_aggregated_meta
 
 def plot_cluster_matrix(cluster_summary: pd.DataFrame, out_png: Path, out_pdf: Path) -> None:
     """
