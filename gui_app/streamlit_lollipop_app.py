@@ -24,6 +24,7 @@ import streamlit as st
 
 from run_analysis import (
     build_cluster_summary,
+    build_exact_site_summary,
     build_lollipop_points,
     infer_protein_length,
     make_output_prefix,
@@ -399,6 +400,10 @@ if mode == "Extract from Excel datasets":
                         )
 
                     clusters = build_cluster_summary(points, gap=int(cluster_gap))
+                    exact_sites = build_exact_site_summary(points)
+                    exact_three_dataset_sites = exact_sites[
+                        exact_sites["is_exact_three_dataset_site"] == True
+                    ].copy()
                     plot_len = int(protein_length) if protein_length else infer_protein_length(semi, hunter, meta)
 
                     main_png = plots_dir / f"{prefix}_lollipop_multisource_hotspots.png"
@@ -409,6 +414,8 @@ if mode == "Extract from Excel datasets":
                     plot_lollipop_multisource_hotspots(
                         points=points,
                         cluster_summary=clusters,
+                        exact_site_summary=exact_sites,
+                        highlight_exact_dataset_support=3,
                         protein_len=plot_len,
                         out_png=main_png,
                         out_pdf=main_pdf,
@@ -437,6 +444,8 @@ if mode == "Extract from Excel datasets":
                             f"{prefix}_semitryptome.csv": semi,
                             f"{prefix}_hunter_mj.csv": hunter,
                             f"{prefix}_metacaspase.csv": meta,
+                            f"{prefix}_exact_site_summary.csv": exact_sites,
+                            f"{prefix}_exact_three_dataset_sites.csv": exact_three_dataset_sites,
                         },
                         metrics={
                             "Semitryptome rows": len(semi),
@@ -444,6 +453,7 @@ if mode == "Extract from Excel datasets":
                             "Metacaspase rows": len(meta),
                             "Lollipop points": len(points),
                             "Clusters": len(clusters),
+                            "Exact 3-dataset sites": len(exact_three_dataset_sites),
                             "Protein length": plot_len,
                         },
                     )
@@ -543,6 +553,10 @@ else:
 
                 points = coerce_custom_points(raw_df)
                 clusters = build_cluster_summary(points, gap=int(custom_cluster_gap))
+                exact_sites = build_exact_site_summary(points)
+                exact_three_dataset_sites = exact_sites[
+                    exact_sites["is_exact_three_dataset_site"] == True
+                ].copy()
 
                 run_dir = Path(tempfile.mkdtemp(prefix="custom_lollipop_streamlit_"))
                 plots_dir = run_dir / "plots"
@@ -557,6 +571,8 @@ else:
                 plot_lollipop_multisource_hotspots(
                     points=points,
                     cluster_summary=clusters,
+                    exact_site_summary=exact_sites,
+                    highlight_exact_dataset_support=3,
                     protein_len=int(custom_length),
                     out_png=main_png,
                     out_pdf=main_pdf,

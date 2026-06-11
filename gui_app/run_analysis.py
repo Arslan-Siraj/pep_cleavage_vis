@@ -32,6 +32,8 @@ Outputs:
   output/tables/pyk10_metacaspase.csv
   output/tables/pyk10_lollipop_clusters.csv
   output/tables/pyk10_lollipop_points.csv
+  output/tables/pyk10_exact_site_summary.csv
+  output/tables/pyk10_exact_three_dataset_sites.csv
   output/plots/pyk10_lollipop_multisource_hotspots.png
   output/plots/pyk10_lollipop_multisource_hotspots.pdf
   output/README_lollipop.md
@@ -805,6 +807,100 @@ def build_cluster_summary(points: pd.DataFrame, gap: int = 10) -> pd.DataFrame:
 
     return pd.DataFrame(rows)
 
+
+def build_exact_site_summary(points: pd.DataFrame) -> pd.DataFrame:
+    """
+    Summarize exact cleavage coordinates across datasets.
+
+    This is different from cluster-level support. A site is considered an
+    exact three-dataset cleavage site only when the same residue coordinate is
+    present in Semitryptome, HUNTER MJ, and Metacaspase matrix tracks.
+
+    Ranking rule:
+      1. prioritize the number of datasets supporting the exact coordinate;
+      2. within tied support levels, prioritize a normalized cross-dataset score;
+      3. then prioritize observation count.
+
+    The normalized score is used only for ranking across heterogeneous evidence
+    scales. It preserves the original dataset-specific weights in separate
+    columns for interpretation:
+      - Semitryptome: PSM
+      - HUNTER MJ: maximum absolute log2 fold-change
+      - Metacaspase matrix: maximum metacaspase score
+    """
+    dataset_order = ["Semitryptome", "HUNTER MJ", "Metacaspase matrix"]
+
+    columns = [
+        "cleavage_site", "datasets_supporting", "datasets", "support_class",
+        "is_exact_three_dataset_site", "Semitryptome", "HUNTER MJ", "Metacaspase matrix",
+        "semitryptome_weight", "hunter_mj_weight", "metacaspase_weight",
+        "normalized_cross_dataset_score", "n_observations", "peptides"
+    ]
+
+    if points.empty:
+        return pd.DataFrame(columns=columns)
+
+    tmp = points.copy()
+    tmp["cleavage_site"] = safe_numeric(tmp["cleavage_site"])
+    tmp = tmp.dropna(subset=["cleavage_site"]).copy()
+    tmp["cleavage_site"] = tmp["cleavage_site"].astype(int)
+    tmp["weight"] = safe_numeric(tmp["weight"]).fillna(0)
+    if "n_observations" not in tmp.columns:
+        tmp["n_observations"] = 1
+
+    # Normalize weights within each dataset so heterogeneous scales can be
+    # combined for ranking without implying that PSM, logFC, and substrate score
+    # are measured on the same raw scale.
+    tmp["normalized_weight"] = 0.0
+    for dataset in dataset_order:
+        mask = tmp["dataset"] == dataset
+        max_weight = tmp.loc[mask, "weight"].max()
+        if pd.notna(max_weight) and max_weight > 0:
+            tmp.loc[mask, "normalized_weight"] = tmp.loc[mask, "weight"] / max_weight
+
+    rows = []
+    for site, sub in tmp.groupby("cleavage_site", sort=True):
+        datasets_present = [d for d in dataset_order if d in set(sub["dataset"])]
+        weights = {}
+        flags = {}
+        for dataset in dataset_order:
+            dsub = sub[sub["dataset"] == dataset]
+            flags[dataset] = int(not dsub.empty)
+            weights[dataset] = float(dsub["weight"].max()) if not dsub.empty else 0.0
+
+        peptides = []
+        if "peptide" in sub.columns:
+            for value in sub["peptide"]:
+                value = str(value)
+                if value and value.lower() != "nan" and value not in peptides:
+                    peptides.append(value)
+
+        datasets_supporting = len(datasets_present)
+        rows.append({
+            "cleavage_site": int(site),
+            "datasets_supporting": datasets_supporting,
+            "datasets": "; ".join(datasets_present),
+            "support_class": f"{datasets_supporting}/3 datasets",
+            "is_exact_three_dataset_site": datasets_supporting == 3,
+            "Semitryptome": flags["Semitryptome"],
+            "HUNTER MJ": flags["HUNTER MJ"],
+            "Metacaspase matrix": flags["Metacaspase matrix"],
+            "semitryptome_weight": weights["Semitryptome"],
+            "hunter_mj_weight": weights["HUNTER MJ"],
+            "metacaspase_weight": weights["Metacaspase matrix"],
+            "normalized_cross_dataset_score": float(sub["normalized_weight"].sum()),
+            "n_observations": int(safe_numeric(sub["n_observations"]).fillna(1).sum()),
+            "peptides": ";".join(peptides[:5]),
+        })
+
+    out = pd.DataFrame(rows)
+    out = out.sort_values(
+        ["datasets_supporting", "normalized_cross_dataset_score", "n_observations", "cleavage_site"],
+        ascending=[False, False, False, True],
+    ).reset_index(drop=True)
+    out["rank"] = np.arange(1, len(out) + 1)
+    return out[["rank", *columns]]
+
 def infer_protein_length(semi: pd.DataFrame, hunter: pd.DataFrame, meta: pd.DataFrame) -> int:
     """
     Infer plotting length from peptide ends and HUNTER relative positions.
@@ -843,7 +939,9 @@ def plot_lollipop_multisource_hotspots(
     protein_len: int,
     out_png: Path,
     out_pdf: Path,
+    exact_site_summary: Optional[pd.DataFrame] = None,
     shade_min_dataset_support: int = 2,
+    highlight_exact_dataset_support: int = 3,
     x_tick_gap: int = 20,
     title: str = "Target protein: cleavage-site evidence",
     x_label: str = "Residue coordinate",
@@ -874,6 +972,13 @@ def plot_lollipop_multisource_hotspots(
 
     fig, ax = plt.subplots(figsize=(15, 5.8))
 
+    highlight_sites: List[int] = []
+    if exact_site_summary is not None and not exact_site_summary.empty:
+        h = exact_site_summary[
+            safe_numeric(exact_site_summary["datasets_supporting"]) >= highlight_exact_dataset_support
+        ].copy()
+        highlight_sites = safe_numeric(h["cleavage_site"]).dropna().astype(int).tolist()
+
     # Background cluster shading
     if not cluster_summary.empty:
         shaded = cluster_summary[
@@ -896,6 +1001,21 @@ def plot_lollipop_multisource_hotspots(
                 va="bottom",
                 fontsize=8,
             )
+
+    # Exact cleavage-site highlights across all requested datasets.
+    # These are residue-level overlaps, not cluster-level overlaps.
+    for site in highlight_sites:
+        ax.axvline(site, linestyle="--", linewidth=1.2, alpha=0.65, zorder=1)
+        ax.text(
+            site,
+            cluster_label_y + 0.08,
+            str(site),
+            ha="center",
+            va="bottom",
+            rotation=90,
+            fontsize=8,
+            fontweight="bold",
+        )
 
     # Lollipop tracks
     for dataset in dataset_order:
@@ -931,6 +1051,21 @@ def plot_lollipop_multisource_hotspots(
             label=dataset,
             zorder=2,
         )
+
+        # Add a larger open marker around exact sites that are present across
+        # all three datasets so the residue-level overlap is visually explicit.
+        if highlight_sites:
+            hsub = sub[sub["cleavage_site"].isin(highlight_sites)].copy()
+            if not hsub.empty:
+                ax.scatter(
+                    hsub["cleavage_site"],
+                    np.full(len(hsub), y),
+                    s=hsub["marker_size"] + 90,
+                    facecolors="none",
+                    edgecolors="black",
+                    linewidths=1.4,
+                    zorder=4,
+                )
 
     # X-axis: protein coordinate
     ax.set_xlim(0, protein_len + 10)
@@ -1067,6 +1202,12 @@ Clusters were defined using a simple reproducible rule: adjacent cleavage sites 
 - `plots/{target.output_prefix}_cluster_evidence_matrix.png`
 - `tables/{target.output_prefix}_lollipop_points.csv`
 - `tables/{target.output_prefix}_lollipop_clusters.csv`
+- `tables/{target.output_prefix}_exact_site_summary.csv`
+- `tables/{target.output_prefix}_exact_three_dataset_sites.csv`
+
+## Exact cleavage-site support
+
+The exact-site summary ranks residue coordinates independently of clusters. A residue is marked as an exact three-dataset site only when the same coordinate is present in Semitryptome, HUNTER MJ, and Metacaspase matrix evidence. These coordinates are highlighted on the lollipop plot with vertical dashed lines and open black circles around the corresponding dataset points.
 
 ## Recommended presentation wording
 
@@ -1160,6 +1301,16 @@ def main() -> None:
         help="Minimum number of datasets supporting a cluster for background shading.",
     )
     parser.add_argument(
+        "--highlight-exact-dataset-support",
+        type=int,
+        default=3,
+        choices=[1, 2, 3],
+        help=(
+            "Highlight exact cleavage coordinates supported by at least this many datasets. "
+            "Default 3 highlights only residue-level sites present in all three datasets."
+        ),
+    )
+    parser.add_argument(
         "--plot-every-row",
         action="store_true",
         help=(
@@ -1217,13 +1368,23 @@ def main() -> None:
 
     points = build_lollipop_points(sem, hunter, meta, aggregate_sites=not args.plot_every_row)
     cluster_summary = build_cluster_summary(points, gap=args.cluster_gap)
+    exact_site_summary = build_exact_site_summary(points)
+    exact_three_dataset_sites = exact_site_summary[
+        exact_site_summary["datasets_supporting"] == 3
+    ].copy()
     protein_len = target.protein_length or infer_protein_length(sem, hunter, meta)
 
     points.to_csv(tables_dir / f"{prefix}_lollipop_points.csv", index=False)
     cluster_summary.to_csv(tables_dir / f"{prefix}_lollipop_clusters.csv", index=False)
+    exact_site_summary.to_csv(tables_dir / f"{prefix}_exact_site_summary.csv", index=False)
+    exact_three_dataset_sites.to_csv(tables_dir / f"{prefix}_exact_three_dataset_sites.csv", index=False)
 
     print(f"  Lollipop points: {len(points)}")
     print(f"  Clusters: {len(cluster_summary)}")
+    print(f"  Exact 3-dataset cleavage sites: {len(exact_three_dataset_sites)}")
+    if not exact_three_dataset_sites.empty:
+        top_sites = ", ".join(exact_three_dataset_sites.head(15)["cleavage_site"].astype(str).tolist())
+        print(f"    Top exact 3-dataset sites: {top_sites}")
     print(f"  Protein plotting length: {protein_len}")
 
     plot_title = f"{target.display_name}: cleavage-site evidence"
@@ -1241,7 +1402,9 @@ def main() -> None:
         protein_len=protein_len,
         out_png=main_png,
         out_pdf=main_pdf,
+        exact_site_summary=exact_site_summary,
         shade_min_dataset_support=args.shade_min_dataset_support,
+        highlight_exact_dataset_support=args.highlight_exact_dataset_support,
         title=plot_title,
         x_label=x_label,
     )
