@@ -1,49 +1,8 @@
-#!/usr/bin/env python3
-"""
-run_analysis_lollipop.py
-
-Presentation-friendly lollipop visualization for Arabidopsis AT3G09260.1
-(PYK10 / BGLU23 / LEB / PSR3.1) cleavage-site evidence.
-
-This script reads the raw Excel files, extracts PYK10 rows from three Arabidopsis
-datasets, converts them to a common protein-coordinate system, clusters nearby
-cleavage sites, and generates a clean lollipop plot.
-
-Main input files expected in --input-dir:
-  1. Arabidopsis semitryptome Excel file
-  2. HUNTER_data_shoot_MJ Excel file
-  3. ProteinBased_www_P10'P10 Excel file
-
-The script is robust to copied/renamed files such as:
-  Arabidopsis_semitryptome_23112020.xlsx
-  Arabidopsis_semitryptome_23112020(2).xlsx
-  HUNTER_data_shoot_MJ.xlsx
-  HUNTER_data_shoot_MJ(1).xlsx
-  ProteinBased_www_P10'P10 1.xlsx
-  ProteinBased_www_P10'P10 1(1).xlsx
-  ProteinBased_www_P10d_P10_1.xlsx
-
-Usage:
-  python scripts/run_analysis_lollipop.py --input-dir data --output-dir output
-
-Outputs:
-  output/tables/pyk10_semitryptome.csv
-  output/tables/pyk10_hunter_mj.csv
-  output/tables/pyk10_metacaspase.csv
-  output/tables/pyk10_lollipop_clusters.csv
-  output/tables/pyk10_lollipop_points.csv
-  output/plots/pyk10_lollipop_multisource_hotspots.png
-  output/plots/pyk10_lollipop_multisource_hotspots.pdf
-  output/README_lollipop.md
-"""
-
 from __future__ import annotations
-
 import argparse
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt

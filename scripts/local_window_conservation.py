@@ -1,44 +1,9 @@
-#!/usr/bin/env python3
-"""
-Point 5 bonus analysis: local cleavage-window conservation between Arabidopsis and maize.
-
-This script compares cleavage sites by sequence context rather than by raw residue coordinate.
-It is designed for cases where the maize input is the SHMJ007 Excel file and the Arabidopsis
-input is the lollipop-points CSV produced by the Arabidopsis workflow.
-
-Recommended use:
-    1. Run the Arabidopsis workflow for a conserved protein, e.g. AT4G21280.1 / PsbQ1.
-    2. Save the Arabidopsis lollipop-points CSV.
-    3. Provide an Arabidopsis protein FASTA so local windows can be reconstructed.
-    4. Compare those windows with maize cleavage_sequence_10 from the maize Excel file.
-
-Example:
-    python point5_local_window_conservation.py \
-        --arabidopsis-points AT4G21280_lollipop_points.csv \
-        --arabidopsis-fasta arabidopsis_proteins.fasta \
-        --arabidopsis-protein AT4G21280.1 \
-        --maize-xlsx SHMJ007_maize_shoot_rep_exclusion.xlsx \
-        --maize-query PSBQ1 \
-        --window 10 \
-        --core 5 \
-        --min-core-identity 0.40 \
-        --out-prefix psbq1_local_context
-
-Outputs:
-    <out-prefix>_arabidopsis_windows.csv
-    <out-prefix>_maize_windows.csv
-    <out-prefix>_candidate_local_context_matches.csv
-    <out-prefix>_paired_context_plot.html     if --plot is set
-"""
-
 from __future__ import annotations
-
 import argparse
 import html
 import re
 from pathlib import Path
 from typing import Dict, Iterable, Optional, Tuple
-
 import pandas as pd
 
 
