@@ -34,4 +34,4 @@ The maize screen compares Arabidopsis and maize cleavage sites by local amino-ac
 - Optional maize local-context match table and HTML plot
 
 ## Output of workflow
-[output folder](https://github.com/Arslan-Siraj/pep_cleavage_vis/output)
+[output folder](https://github.com/Arslan-Siraj/pep_cleavage_vis/tree/main/output)
