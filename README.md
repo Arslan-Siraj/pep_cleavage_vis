@@ -32,3 +32,8 @@ The maize screen compares Arabidopsis and maize cleavage sites by local amino-ac
 - Cleavage-site table as CSV
 - Cluster and exact-site summaries as CSV
 - Optional maize local-context match table and HTML plot
+
+## Example figure
+![Example multisource lollipop plot](figures/lollipop_multisource_hotspots.png)
+
+[View example out lollipop plot](figures/lollipop_multisource_hotspots.pdf)

@@ -1,0 +1,6 @@
+rank,cleavage_site,datasets_supporting,datasets,support_class,is_exact_three_dataset_site,Semitryptome,HUNTER MJ,Metacaspase matrix,semitryptome_weight,hunter_mj_weight,metacaspase_weight,normalized_cross_dataset_score,n_observations,peptides
+1,389,3,Semitryptome; HUNTER MJ; Metacaspase matrix,3/3 datasets,True,1,1,1,46.0,4.76920503413432,28.094464000000002,1.7779514331846882,3,AALNVYSR;NAQNYAIGSKPLT
+2,25,3,Semitryptome; HUNTER MJ; Metacaspase matrix,3/3 datasets,True,1,1,1,350.0,0.675313783774615,1.63,1.1495654191381246,3,DGPVCPPSNKLSR;DGPVCPPSNK
+3,279,3,Semitryptome; HUNTER MJ; Metacaspase matrix,3/3 datasets,True,1,1,1,26.0,6.78459412110755,0.91,1.0264094274642146,3,AHDLADSQDGASIDR;IGIAHSPAWFE
+4,384,3,Semitryptome; HUNTER MJ; Metacaspase matrix,3/3 datasets,True,1,1,1,24.0,3.16035441896242,0.0,0.4969953207059069,3,SKPLTAALNVYSR
+5,382,3,Semitryptome; HUNTER MJ; Metacaspase matrix,3/3 datasets,True,1,1,1,10.0,3.17988795352665,0.0,0.4596433252635408,3,IGSKPLTAALNVYSR
