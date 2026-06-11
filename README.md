@@ -1,22 +1,34 @@
-# Integrated visualization of Arabidopsis PYK10 cleavage-site evidence
+# Arabidopsis cleavage-site visualization
 
-## Objective
+This Streamlit app visualizes cleavage-site evidence for a selected **Arabidopsis protein** using three Arabidopsis datasets, with an optional maize local-context comparison.
 
-This analysis visualizes cleavage-site and peptide-coverage evidence for **Arabidopsis AT3G09260.1**, also known as **LEB/BGLU23/PYK10/PSR3.1**, by integrating three Arabidopsis datasets and adding a separate exploratory fourth analysis against maize methyl-jasmonate N-terminomics.
+## Inputs
 
-## Input datasets
+- `Arabidopsis_semitryptome_23112020.xlsx`
+- `HUNTER_data_shoot_MJ.xlsx`
+- `ProteinBased_www_P10'P10.xlsx`
+- Optional: `SHMJ007_maize_shoot_rep_exclusion.xlsx` for the maize comparison
+- Optional: Arabidopsis protein FASTA for local sequence-window comparison
 
-1. `Arabidopsis_semitryptome_23112020.xlsx`: semitryptic peptide evidence and candidate cleavage sites across Arabidopsis proteins.
-2. `HUNTER_data_shoot_MJ.xlsx`: Arabidopsis shoot methyl-jasmonate N-terminomics; rows are N-terminally modified peptides with time-resolved log2 fold-changes.
-3. `ProteinBased_www_P10'P10.xlsx`: protein-based metacaspase substrate matrix with peptide windows, peptide starts, and MC1/MC2/MC4/MC9 scoring blocks.
-4. `SHMJ007_maize_shoot_rep_exclusion.xlsx`: maize shoot methyl-jasmonate N-terminomics used separately for Task 5.
+## What the app does
 
-## Main computational strategy
+The app searches for the selected target protein using the provided protein ID, UniProt ID, and aliases. It extracts cleavage or peptide-start evidence and plots the results on a common protein-coordinate lollipop plot.
 
-The code extracts all rows corresponding to PYK10/AT3G09260.1 from the three Arabidopsis datasets. Each row is converted to a common coordinate system using the peptide start or cleavage-site coordinate. The final plot contains three evidence tracks:
+Evidence tracks:
 
-- **Semitryptome track:** peptide coverage segments; line thickness increases with peptide-spectrum-match support.
-- **HUNTER MJ track:** N-terminal cleavage/start sites; marker colour and height encode the mean log2 fold-change across MJ time points.
-- **Metacaspase matrix track:** peptide segments from the metacaspase substrate matrix; opacity encodes the maximum available substrate score.
+- **Semitryptome:** peptide-spectrum-match support
+- **HUNTER MJ:** methyl-jasmonate-responsive N-terminal peptides
+- **Metacaspase matrix:** predicted or scored metacaspase substrate evidence
 
-access the GUI at: (StreamlitApp)[https://arslan-siraj-pep-cleavage--gui-appstreamlit-lollipop-app-ukwaqf.streamlit.app/]
+The maize screen compares Arabidopsis and maize cleavage sites by local amino-acid sequence context, not by raw residue number.
+
+## Web app
+
+[Open the Streamlit app](https://arslan-siraj-pep-cleavage--gui-appstreamlit-lollipop-app-ukwaqf.streamlit.app/)
+
+## Outputs
+
+- Lollipop plot as PNG/PDF
+- Cleavage-site table as CSV
+- Cluster and exact-site summaries as CSV
+- Optional maize local-context match table and HTML plot
